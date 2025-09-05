@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<title>Excel to TXT Splitter</title>
+
+<link rel="stylesheet" type="text/css" href="/style.css">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+</head>
+
+<body>
+
+<h1>Upload Excel File</h1>
+
+<form id="uploadForm" enctype="multipart/form-data">
+
+<input type="file" name="file" id="fileInput" accept=".xlsx" required>
+
+<br>
+
+<button type="submit">Convert</button>
+
+</form>
+
+<div id="status"></div>
+
+<script>
+
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+
+e.preventDefault();
+
+const fileInput = document.getElementById('fileInput');
+
+const file = fileInput.files[0];
+
+const status = document.getElementById('status');
+
+if (!file) {
+
+status.textContent = 'No file uploaded';
+
+return;
+
+}
+
+const reader = new FileReader();
+
+reader.onload = function(e) {
+
+const data = new Uint8Array(e.target.result);
+
+const workbook = XLSX.read(data, { type: 'array' });
+
+const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+// Extract columns D (3) and E (4) - assuming 0-based index
+
+const values_d = jsonData.map(row => row[3]);
+
+const values_e = jsonData.map(row => row[4]);
+
+const max_chunk_size = 199;
+
+const zip = new JSZip();
+
+let i = 0;
+
+while (i < values_d.length) {
+
+const current_e = values_e[i];
+
+let chunk = [];
+
+let file_count = 1;
+
+while (i < values_d.length && values_e[i] === current_e) {
+
+if (values_d[i] !== undefined) chunk.push(values_d[i]);
+
+i++;
+
+if (chunk.length === max_chunk_size) {
+
+zip.file(`${current_e}_${file_count}.txt`, chunk.join('\n'));
+
+file_count++;
+
+chunk = [];
+
+}
+
+}
+
+if (chunk.length > 0) {
+
+zip.file(`${current_e}_${file_count}.txt`, chunk.join('\n'));
+
+}
+
+}
+
+zip.generateAsync({ type: 'blob' }).then(function(content) {
+
+saveAs(content, 'output_txt.zip');
+
+status.textContent = 'Conversion complete! Download started.';
+
+});
+
+};
+
+reader.readAsArrayBuffer(file);
+
+});
+
+</script>
+
+</body>
+
+</html>
