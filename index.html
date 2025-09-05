@@ -22,63 +22,72 @@
   <div id="status"></div>
 
   <script>
-    document.getElementById('uploadForm').addEventListener('submit', function(e) {
-      e.preventDefault();
+  // Add an event listener to the form with ID 'uploadForm' to handle submit event
+  document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    e.preventDefault(); // Prevents the default form submission behavior (page reload)
 
-      const fileInput = document.getElementById('fileInput');
-      const file = fileInput.files[0];
-      const status = document.getElementById('status');
+    const fileInput = document.getElementById('fileInput'); // File input element
+    const file = fileInput.files[0]; // Get the first uploaded file
+    const status = document.getElementById('status'); // Status element to show messages
 
-      if (!file) {
-        status.textContent = 'No file uploaded';
-        return;
-      }
+    // If no file is selected, show message and exit
+    if (!file) {
+      status.textContent = 'No file uploaded';
+      return;
+    }
 
-      const reader = new FileReader();
+    const reader = new FileReader(); // FileReader to read file contents
 
-      reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    // When the file is successfully loaded
+    reader.onload = function(e) {
+      const data = new Uint8Array(e.target.result); // Convert file to byte array
+      const workbook = XLSX.read(data, { type: 'array' }); // Parse Excel file using SheetJS
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]; // Select the first sheet
+      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }); // Convert sheet to JSON array (rows as arrays)
 
-        // Extract columns D (3) and E (4) - assuming 0-based index
-        const values_d = jsonData.map(row => row[3]);
-        const values_e = jsonData.map(row => row[4]);
+      // Extract columns D (index 3) and E (index 4)
+      const values_d = jsonData.map(row => row[3]);
+      const values_e = jsonData.map(row => row[4]);
 
-        const max_chunk_size = 199;
-        const zip = new JSZip();
-        let i = 0;
+      const max_chunk_size = 199; // Maximum number of rows per text file
+      const zip = new JSZip(); // Initialize a new ZIP archive
+      let i = 0; // Row counter
 
-        while (i < values_d.length) {
-          const current_e = values_e[i];
-          let chunk = [];
-          let file_count = 1;
+      // Iterate over all rows
+      while (i < values_d.length) {
+        const current_e = values_e[i]; // Grouping key from column E
+        let chunk = []; // Temporary array to hold values from column D
+        let file_count = 1; // Counter for multiple files per group
 
-          while (i < values_d.length && values_e[i] === current_e) {
-            if (values_d[i] !== undefined) chunk.push(values_d[i]);
-            i++;
+        // Collect all rows that have the same value in column E
+        while (i < values_d.length && values_e[i] === current_e) {
+          if (values_d[i] !== undefined) chunk.push(values_d[i]); // Add value from column D if it exists
+          i++;
 
-            if (chunk.length === max_chunk_size) {
-              zip.file(`${current_e}_${file_count}.txt`, chunk.join('\n'));
-              file_count++;
-              chunk = [];
-            }
-          }
-
-          if (chunk.length > 0) {
+          // If chunk reaches max size, save it to a new text file in the ZIP
+          if (chunk.length === max_chunk_size) {
             zip.file(`${current_e}_${file_count}.txt`, chunk.join('\n'));
+            file_count++;
+            chunk = []; // Reset chunk for next file
           }
         }
 
-        zip.generateAsync({ type: 'blob' }).then(function(content) {
-          saveAs(content, 'output_txt.zip');
-          status.textContent = 'Conversion complete! Download started.';
-        });
-      };
+        // Save any remaining rows as a file
+        if (chunk.length > 0) {
+          zip.file(`${current_e}_${file_count}.txt`, chunk.join('\n'));
+        }
+      }
 
-      reader.readAsArrayBuffer(file);
-    });
-  </script>
+      // Generate the ZIP file and trigger download
+      zip.generateAsync({ type: 'blob' }).then(function(content) {
+        saveAs(content, 'output_txt.zip'); // Save as "output_txt.zip"
+        status.textContent = 'Conversion complete! Download started.'; // Update status
+      });
+    };
+
+    // Read the file as an ArrayBuffer so it can be processed
+    reader.readAsArrayBuffer(file);
+  });
+</script>
 </body>
 </html>
