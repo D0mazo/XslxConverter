@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="lt">
 <head>
+  <meta charset="UTF-8">
   <title>Excel to TXT Splitter</title>
- <link rel="stylesheet" type="text/css" href="style.css">
 
+  <link rel="stylesheet" type="text/css" href="style.css">
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -11,83 +12,90 @@
 </head>
 
 <body>
-  <h1>Įkelti xlsx failą, D stulpelyje informacija, E stulpelyje sandėlys iš Kurio, F Stulpelyje į kurį</h1>
+  <h1>
+    Įkelti xlsx failą, D – informacija,
+    E – sandėlys iš kurio,
+    F – sandėlys į kurį
+  </h1>
 
-  <form id="uploadForm" enctype="multipart/form-data">
-    <input type="file" name="file" id="fileInput" accept=".xlsx" required>
-    <br>
+  <form id="uploadForm">
+    <input type="file" id="fileInput" accept=".xlsx" required>
+    <br><br>
     <button type="submit">Konvertuoti</button>
   </form>
 
   <div id="status"></div>
 
   <script>
-  // Add an event listener to the form with ID 'uploadForm' to handle submit event
-  document.getElementById('uploadForm').addEventListener('submit', function(e) {
-    e.preventDefault(); // Prevents the default form submission behavior (page reload)
+    document.getElementById('uploadForm').addEventListener('submit', function (e) {
+      e.preventDefault();
 
-    const fileInput = document.getElementById('fileInput'); // File input element
-    const file = fileInput.files[0]; // Get the first uploaded file
-    const status = document.getElementById('status'); // Status element to show messages
+      const file = document.getElementById('fileInput').files[0];
+      const status = document.getElementById('status');
 
-    // If no file is selected, show message and exit
-    if (!file) {
-      status.textContent = 'No file uploaded';
-      return;
-    }
+      if (!file) {
+        status.textContent = 'Failas neįkeltas';
+        return;
+      }
 
-    const reader = new FileReader(); // FileReader to read file contents
+      const reader = new FileReader();
 
-    // When the file is successfully loaded
-    reader.onload = function(e) {
-      const data = new Uint8Array(e.target.result); // Convert file to byte array
-      const workbook = XLSX.read(data, { type: 'array' }); // Parse Excel file using SheetJS
-      const sheet = workbook.Sheets[workbook.SheetNames[0]]; // Select the first sheet
-      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }); // Convert sheet to JSON array (rows as arrays)
+      reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-      // Extract columns D (index 3) and E (index 4)
-      const values_d = jsonData.map(row => row[3]);
-      const values_e = jsonData.map(row => row[4]);
+        const values_d = rows.map(r => r[3]); // D
+        const values_e = rows.map(r => r[4]); // E
+        const values_f = rows.map(r => r[5]); // F
 
-      const max_chunk_size = 199; // Maximum number of rows per text file
-      const zip = new JSZip(); // Initialize a new ZIP archive
-      let i = 0; // Row counter
+        const max_chunk_size = 199;
+        const zip = new JSZip();
+        let i = 0;
 
-      // Iterate over all rows
-      while (i < values_d.length) {
-        const current_e = values_e[i]; // Grouping key from column E
-        let chunk = []; // Temporary array to hold values from column D
-        let file_count = 1; // Counter for multiple files per group
+        while (i < values_d.length) {
+          const current_e = values_e[i];
+          const current_f = values_f[i];
+          let chunk = [];
+          let file_count = 1;
 
-        // Collect all rows that have the same value in column E
-        while (i < values_d.length && values_e[i] === current_e) {
-          if (values_d[i] !== undefined) chunk.push(values_d[i]); // Add value from column D if it exists
-          i++;
+          while (
+            i < values_d.length &&
+            values_e[i] === current_e &&
+            values_f[i] === current_f
+          ) {
+            if (values_d[i] !== undefined) {
+              chunk.push(values_d[i]);
+            }
+            i++;
 
-          // If chunk reaches max size, save it to a new text file in the ZIP
-          if (chunk.length === max_chunk_size) {
-            zip.file(`${current_e}_${file_count}.txt`, chunk.join('\n'));
-            file_count++;
-            chunk = []; // Reset chunk for next file
+            if (chunk.length === max_chunk_size) {
+              zip.file(
+                `${current_e}_${current_f}_${file_count}.txt`,
+                chunk.join('\n')
+              );
+              file_count++;
+              chunk = [];
+            }
+          }
+
+          if (chunk.length > 0) {
+            zip.file(
+              `${current_e}_${current_f}_${file_count}.txt`,
+              chunk.join('\n')
+            );
           }
         }
 
-        // Save any remaining rows as a file
-        if (chunk.length > 0) {
-          zip.file(`${current_e}_${file_count}.txt`, chunk.join('\n'));
-        }
-      }
+        zip.generateAsync({ type: 'blob' }).then(content => {
+          saveAs(content, 'txt.zip');
+          status.textContent = 'Operacija sėkminga';
+        });
+      };
 
-      // Generate the ZIP file and trigger download
-      zip.generateAsync({ type: 'blob' }).then(function(content) {
-        saveAs(content, 'txt.zip'); // Save as "output_txt.zip"
-        status.textContent = 'Operacija Sėkminga'; // Update status
-      });
-    };
-
-    // Read the file as an ArrayBuffer so it can be processed
-    reader.readAsArrayBuffer(file);
-  });
-</script>
+      reader.readAsArrayBuffer(file);
+    });
+  </script>
 </body>
 </html>
