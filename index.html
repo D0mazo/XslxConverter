@@ -12,91 +12,107 @@
 </head>
 
 <body>
-  <h1>
-    Įkelti xlsx failą, A - Kodas, 
-    D – informacija,
-    E – sandėlys iš kurio,
-    F – sandėlys į kurį
-  </h1>
+<h1>
+  Įkelti xlsx failą, A - Kodas,
+  D – informacija,
+  E – sandėlys iš kurio,
+  F – sandėlys į kurį
+</h1>
 
-  <form id="uploadForm">
-    <input type="file" id="fileInput" accept=".xlsx" required>
-    <br><br>
-    <button type="submit">Konvertuoti</button>
-  </form>
+<form id="uploadForm">
+  <input type="file" id="fileInput" accept=".xlsx" required>
+  <br><br>
+  <button type="submit">Konvertuoti</button>
+</form>
 
-  <div id="status"></div>
+<div id="status"></div>
 
-  <script>
-    document.getElementById('uploadForm').addEventListener('submit', function (e) {
-      e.preventDefault();
+<script>
+document.getElementById('uploadForm').addEventListener('submit', function (e) {
+  e.preventDefault();
 
-      const file = document.getElementById('fileInput').files[0];
-      const status = document.getElementById('status');
+  const file = document.getElementById('fileInput').files[0];
+  const status = document.getElementById('status');
 
-      if (!file) {
-        status.textContent = 'Failas neįkeltas';
-        return;
+  if (!file) {
+    status.textContent = 'Failas neįkeltas';
+    return;
+  }
+
+  status.textContent = 'Skaitomas Excel failas...';
+
+  const reader = new FileReader();
+
+  reader.onload = function (evt) {
+    const data = new Uint8Array(evt.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    /* 🔥 FORCE FULL RANGE (FIX 1000 ROW LIMIT) */
+    const range = XLSX.utils.decode_range(sheet['!ref']);
+    range.e.r = Math.max(range.e.r, 200000); // allow up to 200k rows
+    sheet['!ref'] = XLSX.utils.encode_range(range);
+
+    const rows = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: '',
+      blankrows: false
+    });
+
+    console.log('TOTAL ROWS READ:', rows.length);
+
+    const zip = new JSZip();
+    const MAX_LINES = 199;
+
+    let currentKey = null;
+    let buffer = [];
+    let fileIndex = 1;
+
+    /* skip header row -> start from index 1 */
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row) continue;
+
+      const d = String(row[3] || '').trim(); // D
+      const e = String(row[4] || '').trim(); // E
+      const f = String(row[5] || '').trim(); // F
+
+      if (!d || !e || !f) continue;
+
+      const key = `${e}_${f}`;
+
+      if (currentKey !== key) {
+        if (buffer.length > 0) {
+          zip.file(`${currentKey}_${fileIndex}.txt`, buffer.join('\n'));
+          buffer = [];
+          fileIndex = 1;
+        }
+        currentKey = key;
       }
 
-      const reader = new FileReader();
+      buffer.push(d);
 
-      reader.onload = function (e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      if (buffer.length === MAX_LINES) {
+        zip.file(`${currentKey}_${fileIndex}.txt`, buffer.join('\n'));
+        buffer = [];
+        fileIndex++;
+      }
+    }
 
-        const values_d = rows.map(r => r[3]); // D
-        const values_e = rows.map(r => r[4]); // E
-        const values_f = rows.map(r => r[5]); // F
+    if (buffer.length > 0 && currentKey) {
+      zip.file(`${currentKey}_${fileIndex}.txt`, buffer.join('\n'));
+    }
 
-        const max_chunk_size = 199;
-        const zip = new JSZip();
-        let i = 0;
-
-        while (i < values_d.length) {
-          const current_e = values_e[i];
-          const current_f = values_f[i];
-          let chunk = [];
-          let file_count = 1;
-
-          while (
-            i < values_d.length &&
-            values_e[i] === current_e &&
-            values_f[i] === current_f
-          ) {
-            if (values_d[i] !== undefined) {
-              chunk.push(values_d[i]);
-            }
-            i++;
-
-            if (chunk.length === max_chunk_size) {
-              zip.file(
-                `${current_e}_${current_f}_${file_count}.txt`,
-                chunk.join('\n')
-              );
-              file_count++;
-              chunk = [];
-            }
-          }
-
-          if (chunk.length > 0) {
-            zip.file(
-              `${current_e}_${current_f}_${file_count}.txt`,
-              chunk.join('\n')
-            );
-          }
-        }
-
-        zip.generateAsync({ type: 'blob' }).then(content => {
-          saveAs(content, 'txt.zip');
-          status.textContent = 'Operacija sėkminga';
-        });
-      };
-
-      reader.readAsArrayBuffer(file);
+    zip.generateAsync({ type: 'blob' }).then(blob => {
+      saveAs(blob, 'txt.zip');
+      status.textContent = '✅ Operacija sėkminga (15k+ eilučių palaikoma)';
     });
-  </script>
+  };
+
+  reader.readAsArrayBuffer(file);
+});
+</script>
 </body>
 </html>
